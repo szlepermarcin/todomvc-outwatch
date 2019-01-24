@@ -72,7 +72,10 @@ object Todomvcoutwatch {
       case ClearCompleted =>
         state.copy(todoList = state.todoList.filter(_.active))
       case AddTodo =>
-        state.copy(todoList = state.todoList :+ Todo(state.newTodo, active = true, editing = false), newTodo = "")
+        if (state.newTodo != "")
+          state.copy(todoList = state.todoList :+ Todo(state.newTodo, active = true, editing = false), newTodo = "")
+        else
+          state
       case ToggleAll =>
         state.copy(todoList = state.todoList.map(t => t.copy(active = state.todoList.forall(!_.active))))
       case ToggleTodo(todoId) =>
