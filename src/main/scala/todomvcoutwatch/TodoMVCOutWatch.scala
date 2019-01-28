@@ -152,8 +152,6 @@ object TodoMVCOutWatch {
       )
     )
 
-    Observer
-
     val itemsLeftDesc = (cnt: Int) => s"$cnt ${if(cnt == 1) "item" else "items"} left"
 
     val filterElement = (txt: String, link: String, active: Boolean) =>
