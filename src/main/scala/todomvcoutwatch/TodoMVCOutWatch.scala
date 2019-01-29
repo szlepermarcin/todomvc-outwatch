@@ -1,7 +1,9 @@
 package todomvcoutwatch
 
 import cats.effect.IO
-import cats.instances.string.catsKernelStdOrderForString
+import cats.instances.boolean._
+import cats.instances.option._
+import cats.instances.string._
 import monix.execution.Ack
 import monix.execution.Scheduler.Implicits.global
 import monix.reactive.{Observable, Observer}
@@ -16,7 +18,10 @@ import upickle.default.{ReadWriter => RW, macroRW}
 
 object TodoMVCOutWatch {
 
+  val EnterKey = 13
+
   final case class Todo(text: String, active: Boolean, editing: Boolean)
+
   object Todo {
     implicit val rw: RW[Todo] = macroRW
   }
@@ -24,59 +29,61 @@ object TodoMVCOutWatch {
   final case class AppState(todoList: List[Todo], newTodo: String, todoFilter: Option[Boolean])
 
   sealed trait TodoAction
-  final case class UpdateFilter(rp: String) extends TodoAction
+
+  final case class UpdateFilter(filter: Option[Boolean]) extends TodoAction
+
   final case class UpdateText(value: String) extends TodoAction
+
   final case object ClearCompleted extends TodoAction
+
   final case object AddTodo extends TodoAction
+
   final case object ToggleAll extends TodoAction
+
   final case class ToggleTodo(id: Int) extends TodoAction
+
   final case class EditTodo(id: Int) extends TodoAction
+
   final case class UpdateTodo(id: Int, value: String) extends TodoAction
+
   final case class DeleteTodo(id: Int) extends TodoAction
 
 
+  val LocalStorageKey = "todomvc-outwatch"
+
   def main(args: Array[String]): Unit = {
 
-    val hashRouter: IO[Observable[String]] = IO {
-      Observable(
-        window.onLoad.map(_ => ()),
-        window.onHashChange.map(_ => ())
-      ).merge[Unit]
-        .map(_ => dom.window.location.hash.replace("#", ""))
+    val hashRouter: IO[Observable[Option[Boolean]]] = IO {
+      Observable(window.onLoad.map(_ => ()), window.onHashChange.map(_ => ()))
+        .merge[Unit]
+        .map(_ => dom.window.location.hash.replace("#", "").split("/").toList.filter(_.nonEmpty))
+        .map {
+          case "active" :: _ => Some(true)
+          case "completed" :: _ => Some(false)
+          case _ => None
+        }
         .distinctUntilChanged
     }
 
     val reducer = (state: AppState, action: TodoAction) => action match {
-      case UpdateFilter(rp) =>
-        rp.split("/").toList.filter(_.nonEmpty) match {
-          case "active" :: _ =>
-            state.copy(todoFilter = Some(true))
-          case "completed" :: _ =>
-            state.copy(todoFilter = Some(false))
-          case _ =>
-            state.copy(todoFilter = None)
-        }
+      case UpdateFilter(filter) =>
+        state.copy(todoFilter = filter)
       case UpdateText(v) =>
         state.copy(newTodo = v)
       case ClearCompleted =>
         state.copy(todoList = state.todoList.filter(_.active))
-      case AddTodo =>
-        if (state.newTodo != "")
-          state.copy(todoList = state.todoList :+ Todo(state.newTodo, active = true, editing = false), newTodo = "")
-        else
-          state
+      case AddTodo if state.newTodo.nonEmpty =>
+        state.copy(todoList = state.todoList :+ Todo(state.newTodo, active = true, editing = false), newTodo = "")
       case ToggleAll =>
         state.copy(todoList = state.todoList.map(t => t.copy(active = state.todoList.forall(!_.active))))
       case ToggleTodo(todoId) =>
         state.copy(todoList = state.todoList.zipWithIndex.map(v => if (v._2 == todoId) v._1.copy(active = !v._1.active) else v._1))
       case EditTodo(todoId) =>
         state.copy(todoList = state.todoList.zipWithIndex.map(v => if (v._2 == todoId) v._1.copy(editing = true) else v._1))
-      case UpdateTodo(todoId, todoValue) =>
-        if (todoValue == "") {
-          state.copy(todoList = state.todoList.zipWithIndex.filterNot(_._2 == todoId).map(_._1))
-        } else {
-          state.copy(todoList = state.todoList.zipWithIndex.map(v => if (v._2 == todoId) v._1.copy(text = todoValue, editing = false) else v._1))
-        }
+      case UpdateTodo(todoId, todoValue) if todoValue.nonEmpty =>
+        state.copy(todoList = state.todoList.zipWithIndex.map(v => if (v._2 == todoId) v._1.copy(text = todoValue, editing = false) else v._1))
+      case UpdateTodo(todoId, _) =>
+        state.copy(todoList = state.todoList.zipWithIndex.filterNot(_._2 == todoId).map(_._1))
       case DeleteTodo(todoId) =>
         state.copy(todoList = state.todoList.zipWithIndex.filterNot(_._2 == todoId).map(_._1))
       case _ =>
@@ -84,18 +91,18 @@ object TodoMVCOutWatch {
     }
 
     val todoInput = (state: Observable[AppState], store: Observer[TodoAction]) => header(
-      Seq("header").map(cls := _),
+      cls := "header",
       input(
         Seq("new-todo").map(cls := _),
         placeholder := "What needs to be done?",
         onInput.value.map(s => UpdateText(s)) --> store,
         value <-- state.map(_.newTodo).distinctUntilChanged,
-        onKeyUp.filter(t => t.keyCode == 13).map(_ => AddTodo) --> store
+        onKeyUp.filter(t => t.keyCode == EnterKey).map(_ => AddTodo) --> store
       )
     )
 
     val todoListSection = (state: AppState, store: Observer[TodoAction], focusHandler: Handler[Int]) => htmlTag("section")(
-      Seq("main").map(cls := _),
+      cls := "main",
       input(
         id := "toggle-all",
         cls := "toggle-all",
@@ -107,13 +114,13 @@ object TodoMVCOutWatch {
       ul(
         cls := "todo-list",
         state.todoList.zipWithIndex
-          .filter(v => {
+          .filter(v =>
             state.todoFilter match {
               case Some(true) => v._1.active
               case Some(false) => !v._1.active
               case _ => true
             }
-          }).map(t => {
+          ).map(t => {
           li(
             Some(cls := "completed").filterNot(_ => t._1.active),
             Some(cls := "editing").filter(_ => t._1.editing),
@@ -126,9 +133,7 @@ object TodoMVCOutWatch {
                 checked := !t._1.active,
                 onChange(ToggleTodo(t._2)) --> store
               ),
-              label(
-                t._1.text
-              )
+              label(t._1.text)
             ),
             input(
               managedElement
@@ -139,7 +144,7 @@ object TodoMVCOutWatch {
                 ),
               cls := "edit",
               value := t._1.text,
-              onKeyUp.filter(t => t.keyCode == 13)
+              onKeyUp.filter(t => t.keyCode == EnterKey)
                 .map(ev => UpdateTodo(t._2, ev.target.asInstanceOf[Input].value)) --> store,
               eventProp[Event]("focusout")
                 .map(ev => UpdateTodo(t._2, ev.target.asInstanceOf[Input].value)) --> store,
@@ -152,7 +157,7 @@ object TodoMVCOutWatch {
       )
     )
 
-    val itemsLeftDesc = (cnt: Int) => s"$cnt ${if(cnt == 1) "item" else "items"} left"
+    val itemsLeftDesc = (cnt: Int) => s"$cnt ${if (cnt == 1) "item" else "items"} left"
 
     val filterElement = (txt: String, link: String, active: Boolean) =>
       li(
@@ -171,44 +176,35 @@ object TodoMVCOutWatch {
       ),
       ul(
         cls := "filters",
-        filterElement("All","#/", state.todoFilter.isEmpty),
-        filterElement("Active","#/active", state.todoFilter.contains(true)),
-        filterElement("Completed","#/completed", state.todoFilter.contains(false))
+        filterElement("All", "#/", state.todoFilter.isEmpty),
+        filterElement("Active", "#/active", state.todoFilter.contains(true)),
+        filterElement("Completed", "#/completed", state.todoFilter.contains(false))
       ),
       state.todoList.find(!_.active)
-        .map(_ => {
-          button(
-            cls := "clear-completed",
-            "Clear completed",
-            onClick(ClearCompleted) --> store
-          )
-        })
+        .map(_ => button(cls := "clear-completed", "Clear completed", onClick(ClearCompleted) --> store))
     )
 
-    val localStore =(key: String) => (data: String) => IO(dom.window.localStorage.setItem(key, data))
+    val localStore = (key: String) => (data: String) => IO(dom.window.localStorage.setItem(key, data))
 
     val app = for {
-      initial <- IO(Option(dom.window.localStorage.getItem("todomvc-outwatch")).map(s => upickle.default.read[List[Todo]](s)).getOrElse(List.empty))
-      writeLocal = localStore("todomvc-outwatch")
-      store <- Store.create[AppState, TodoAction](AppState(initial,"",None), reducer)
+      initial <- IO(Option(dom.window.localStorage.getItem(LocalStorageKey)).map(s => upickle.default.read[List[Todo]](s)).getOrElse(List.empty))
+      writeLocal = localStore(LocalStorageKey)
+      store <- Store.create[AppState, TodoAction](AppState(initial, "", None), reducer)
       _ = store.mapEvalF(st => writeLocal(upickle.default.write(st.todoList))).foreachL(identity).runAsync(_ => ())
       router <- hashRouter
       _ <- IO(router.map(s => UpdateFilter(s)).subscribe(store))
-      focusHandler <-  Handler.create[Int]
+      focusHandler <- Handler.create[Int]
       result = div(
         h1("todos"),
         todoInput(store, store),
         store.map(state =>
-          Some(
-            Seq(
-              todoListSection(state, store, focusHandler),
-              todoFooter(state, store)
-            )
-          ).filterNot(_ => state.todoList.isEmpty)
+          state.todoList match {
+            case Nil => Seq.empty
+            case _ => Seq(todoListSection(state, store, focusHandler), todoFooter(state, store))
+          }
         )
       )
-      _
-        <- OutWatch.renderInto(".todoapp", result)
+      _ <- OutWatch.renderInto(".todoapp", result)
     } yield ()
 
     app.unsafeRunSync()

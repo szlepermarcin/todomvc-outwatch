@@ -1,5 +1,5 @@
 organization := "outwatch"
-name := "Todomvcoutwatch"
+name := "todomvc-outwatch"
 version := "0.1.0"
 
 resolvers += "jitpack" at "https://jitpack.io"
@@ -8,7 +8,7 @@ scalaVersion := "2.12.6"
 
 libraryDependencies ++= Seq(
   "io.github.outwatch" % "outwatch" % "b2dddb78e39ec6fca19f45c7d6cfae99ffc64de4",
-  "com.lihaoyi" %%% "upickle" % "0.7.1",
+  "com.lihaoyi" %%% "upickle" % "0.4.4",
   "org.scalatest" %%% "scalatest" % "3.0.5" % Test
 )
 
