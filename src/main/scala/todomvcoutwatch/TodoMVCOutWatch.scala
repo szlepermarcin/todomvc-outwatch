@@ -18,8 +18,6 @@ import upickle.default.{ReadWriter => RW, macroRW}
 
 object TodoMVCOutWatch {
 
-  val EnterKey = 13
-
   final case class Todo(text: String, active: Boolean, editing: Boolean)
 
   object Todo {
@@ -48,14 +46,13 @@ object TodoMVCOutWatch {
 
   final case class DeleteTodo(id: Int) extends TodoAction
 
-
   val LocalStorageKey = "todomvc-outwatch"
+  val EnterKey = 13
 
   def main(args: Array[String]): Unit = {
 
     val hashRouter: IO[Observable[Option[Boolean]]] = IO {
-      Observable(window.onLoad.map(_ => ()), window.onHashChange.map(_ => ()))
-        .merge[Unit]
+      Observable(window.onLoad.map(_ => ()), window.onHashChange.map(_ => ())).merge[Unit]
         .map(_ => dom.window.location.hash.replace("#", "").split("/").toList.filter(_.nonEmpty))
         .map {
           case "active" :: _ => Some(true)
@@ -96,6 +93,7 @@ object TodoMVCOutWatch {
         Seq("new-todo").map(cls := _),
         placeholder := "What needs to be done?",
         onInput.value.map(s => UpdateText(s)) --> store,
+        autoFocus := true,
         value <-- state.map(_.newTodo).distinctUntilChanged,
         onKeyUp.filter(t => t.keyCode == EnterKey).map(_ => AddTodo) --> store
       )
@@ -114,66 +112,56 @@ object TodoMVCOutWatch {
       ul(
         cls := "todo-list",
         state.todoList.zipWithIndex
-          .filter(v =>
+          .filter { case (todo, _) =>
             state.todoFilter match {
-              case Some(true) => v._1.active
-              case Some(false) => !v._1.active
+              case Some(true) => todo.active
+              case Some(false) => !todo.active
               case _ => true
             }
-          ).map(t => {
+          }.map { case (todo, todoId) =>
           li(
-            Some(cls := "completed").filterNot(_ => t._1.active),
-            Some(cls := "editing").filter(_ => t._1.editing),
+            Some(cls := "completed").filterNot(_ => todo.active),
+            Some(cls := "editing").filter(_ => todo.editing),
             div(
               cls := "view",
               input(
                 cls := "toggle",
                 tpe := "checkbox",
                 value := "on",
-                checked := !t._1.active,
-                onChange(ToggleTodo(t._2)) --> store
+                checked := !todo.active,
+                onChange(ToggleTodo(todoId)) --> store
               ),
-              label(t._1.text)
+              label(todo.text)
             ),
             input(
-              managedElement
-                .asHtml(e =>
-                  focusHandler
-                    .filter(_ == t._2)
-                    .subscribe(_ => IO(e.focus()).map(_ => Ack.Continue).unsafeToFuture())
-                ),
+              managedElement.asHtml(element =>
+                focusHandler
+                  .filter(_ == todoId)
+                  .subscribe(_ => IO(element.focus()).map(_ => Ack.Continue).unsafeToFuture())
+              ),
               cls := "edit",
-              value := t._1.text,
+              value := todo.text,
               onKeyUp.filter(t => t.keyCode == EnterKey)
-                .map(ev => UpdateTodo(t._2, ev.target.asInstanceOf[Input].value)) --> store,
+                .map(ev => UpdateTodo(todoId, ev.target.asInstanceOf[Input].value)) --> store,
               eventProp[Event]("focusout")
-                .map(ev => UpdateTodo(t._2, ev.target.asInstanceOf[Input].value)) --> store,
+                .map(ev => UpdateTodo(todoId, ev.target.asInstanceOf[Input].value)) --> store,
             ),
-            button(cls := "destroy", onClick(DeleteTodo(t._2)) --> store),
-            onDblClick(EditTodo(t._2)) --> store,
-            onDblClick(t._2) --> focusHandler
+            button(cls := "destroy", onClick(DeleteTodo(todoId)) --> store),
+            onDblClick(EditTodo(todoId)) --> store,
+            onDblClick(todoId) --> focusHandler
           )
-        })
+        }
       )
     )
 
     val itemsLeftDesc = (cnt: Int) => s"$cnt ${if (cnt == 1) "item" else "items"} left"
 
     val filterElement = (txt: String, link: String, active: Boolean) =>
-      li(
-        a(
-          if (active) Some(cls := "selected") else None,
-          href := link,
-          txt
-        )
-      )
+      li(a(Some(cls := "selected").filter(_ => active), href := link, txt))
 
     val todoFooter = (state: AppState, store: Observer[TodoAction]) => footer(
       cls := "footer",
-      span(
-        cls := "todo-count",
-        itemsLeftDesc(state.todoList.count(_.active))
-      ),
+      span(cls := "todo-count", itemsLeftDesc(state.todoList.count(_.active))),
       ul(
         cls := "filters",
         filterElement("All", "#/", state.todoFilter.isEmpty),

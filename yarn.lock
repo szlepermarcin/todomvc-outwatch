@@ -5822,9 +5822,10 @@ source-list-map@^2.0.0:
   resolved "https://registry.yarnpkg.com/source-list-map/-/source-list-map-2.0.1.tgz#3993bd873bfc48479cca9ea3a547835c7c154b34"
   integrity sha512-qnQ7gVMxGNxsiL4lEuJwe/To8UnK7fAnmbGEEH8RpLouuKbeEm0lhbQVFIrNSuB+G7tVrAlVsZgETT5nljf+Iw==
 
-"source-map-loader@git+https://github.com/shishkin/source-map-loader#fetch-http-maps 0.2.3":
+source-map-loader@0.2.3:
   version "0.2.3"
-  resolved "git+https://github.com/shishkin/source-map-loader#420e86645ecc797ab64e9da0417915d24bc0d38e"
+  resolved "https://registry.yarnpkg.com/source-map-loader/-/source-map-loader-0.2.3.tgz#d4b0c8cd47d54edce3e6bfa0f523f452b5b0e521"
+  integrity sha512-MYbFX9DYxmTQFfy2v8FC1XZwpwHKYxg3SK8Wb7VPBKuhDjz8gi9re2819MsG4p49HDyiOSUKlmZ+nQBArW5CGw==
   dependencies:
     async "^2.5.0"
     loader-utils "~0.2.2"
